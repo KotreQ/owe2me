@@ -94,7 +94,7 @@ def test_entry_against_local_nickname_is_auto_accepted(client: TestClient) -> No
     response = client.post(
         "/entries",
         json={
-            "payer_account_id": nickname["id"],
+            "payer_account_id": nickname["account_id"],
             "payee_account_id": me,
             "kind": "debt",
             "amount_minor": 1_500,

@@ -2,11 +2,16 @@ from pydantic import BaseModel, Field
 
 
 class AccountResponse(BaseModel):
-    id: int
+    account_id: int
     kind: str
     display_name: str
     username: str | None = None
-    owner_account_id: int | None = None
+
+
+class UserLookupResponse(BaseModel):
+    account_id: int
+    display_name: str
+    username: str
 
 
 class CreateLocalAccountRequest(BaseModel):
