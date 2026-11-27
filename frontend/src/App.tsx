@@ -1,7 +1,9 @@
+import { Container } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useEffect, useState } from 'react';
 
 import { logout, me, type Me } from './api/auth';
+import { DebtsList } from './components/DebtsList';
 import { LoginModal } from './components/LoginModal';
 import { Navbar } from './components/Navbar';
 import { SignupModal } from './components/SignupModal';
@@ -65,6 +67,14 @@ export default function App() {
                     login.open();
                 }}
             />
+            {user && (
+                <Container size={1000} pb={64}>
+                    <DebtsList
+                        key={user.account_id}
+                        defaultCurrency={user.default_currency}
+                    />
+                </Container>
+            )}
         </>
     );
 }
