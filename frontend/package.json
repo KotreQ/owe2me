@@ -1,35 +1,36 @@
 {
-  "name": "owe2me-frontend",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "oxlint",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "@fontsource-variable/inter": "^5.3.0",
-    "@mantine/colors-generator": "^9.8.2",
-    "@mantine/core": "^9.8.2",
-    "@mantine/hooks": "^9.8.2",
-    "@tabler/icons-react": "^3.53.0",
-    "chroma-js": "^3.3.0",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1"
-  },
-  "devDependencies": {
-    "@types/chroma-js": "^3.1.3",
-    "@types/node": "^26.6.6",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.3.0",
-    "oxlint": "^1.94.0",
-    "postcss": "^8.5.34",
-    "postcss-preset-mantine": "^1.18.0",
-    "postcss-simple-vars": "^7.0.1",
-    "typescript": "~7.0.2",
-    "vite": "^8.4.0"
-  }
+    "name": "owe2me-frontend",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc -b && vite build",
+        "lint": "oxlint",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "@fontsource-variable/inter": "^5.3.0",
+        "@mantine/colors-generator": "^9.8.2",
+        "@mantine/core": "^9.8.2",
+        "@mantine/form": "^9.8.2",
+        "@mantine/hooks": "^9.8.2",
+        "@tabler/icons-react": "^3.53.0",
+        "chroma-js": "^3.3.0",
+        "react": "^19.3.1",
+        "react-dom": "^19.3.1"
+    },
+    "devDependencies": {
+        "@types/chroma-js": "^3.1.3",
+        "@types/node": "^26.6.6",
+        "@types/react": "^19.3.0",
+        "@types/react-dom": "^19.3.0",
+        "@vitejs/plugin-react": "^6.3.0",
+        "oxlint": "^1.94.0",
+        "postcss": "^8.5.34",
+        "postcss-preset-mantine": "^1.18.0",
+        "postcss-simple-vars": "^7.0.1",
+        "typescript": "~7.0.2",
+        "vite": "^8.4.0"
+    }
 }
