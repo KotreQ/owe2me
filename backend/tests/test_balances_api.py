@@ -130,3 +130,81 @@ def test_pending_entries_do_not_count(client: TestClient, db: Session) -> None:
     assert client.post("/entries", json=debt(alice_id, bob.id, 5_000)).status_code == 201
 
     assert client.get("/balances").json() == []
+
+
+def test_balance_with_one_account(client: TestClient, db: Session) -> None:
+    alice_id = signup(client, ALICE)
+    bob = make_user(db, "bob", "Bob")
+    carol = make_user(db, "carol", "Carol")
+    bob_client = TestClient(app)
+    bob_client.post("/auth/login", json={"username": "bob", "password": "b0b-password"})
+    carol_client = TestClient(app)
+    carol_client.post("/auth/login", json={"username": "carol", "password": "b0b-password"})
+
+    accepted_entry(client, bob_client, alice_id, bob.id, 1_000, "PLN")
+    accepted_entry(client, bob_client, bob.id, alice_id, 2_000, "EUR")
+    accepted_entry(client, carol_client, alice_id, carol.id, 500, "PLN")
+
+    response = client.get(f"/balances/{bob.id}")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "account_id": bob.id,
+            "display_name": "Bob",
+            "kind": "user",
+            "currency": "EUR",
+            "net_minor": 2_000,
+        },
+        {
+            "account_id": bob.id,
+            "display_name": "Bob",
+            "kind": "user",
+            "currency": "PLN",
+            "net_minor": -1_000,
+        },
+    ]
+
+
+def test_balance_with_account_requires_login_and_visibility(
+    client: TestClient, db: Session
+) -> None:
+    signup(client, ALICE)
+    bob = make_user(db, "bob", "Bob")
+
+    assert client.get(f"/balances/{bob.id}").status_code == 404
+    assert client.get("/balances/99999").status_code == 404
+
+    anonymous = TestClient(app)
+    assert anonymous.get("/balances/1").status_code == 401
+
+    bob_client = TestClient(app)
+    bob_client.post("/auth/login", json={"username": "bob", "password": "b0b-password"})
+    assert bob_client.get("/balances/99999").status_code == 404
+
+
+def test_balance_with_settled_account_hides_zero_by_default(
+    client: TestClient, db: Session
+) -> None:
+    alice_id = signup(client, ALICE)
+    bob = make_user(db, "bob", "Bob")
+    bob_client = TestClient(app)
+    bob_client.post("/auth/login", json={"username": "bob", "password": "b0b-password"})
+
+    accepted_entry(client, bob_client, alice_id, bob.id, 1_000, "PLN")
+    payment = client.post(
+        "/entries",
+        json={
+            "payer_account_id": alice_id,
+            "payee_account_id": bob.id,
+            "kind": "payment",
+            "amount_minor": 1_000,
+            "currency": "PLN",
+            "title": "settled",
+        },
+    ).json()
+    bob_client.post(f"/entries/{payment['id']}/accept")
+
+    assert client.get(f"/balances/{bob.id}").json() == []
+    zero = client.get(f"/balances/{bob.id}", params={"include_zero": True}).json()
+    assert zero[0]["net_minor"] == 0
