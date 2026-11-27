@@ -161,12 +161,8 @@ def cancel_entry(db: Session, *, actor_account_id: int, entry_id: int) -> Entry:
     return entry
 
 
-def balances_for(db: Session, account_id: int, *, include_zero: bool = False) -> list[Balance]:
-    """Net balance per other account and currency, accepted entries only.
-
-    Zero rows (fully settled pairs) are hidden unless `include_zero`; they are a
-    presentation concern, the entries behind them still exist.
-    """
+def _pair_net(account_id: int):
+    """Signed net per counterparty and currency over accepted entries."""
     is_debt = Entry.kind == EntryKind.debt
     is_payment = Entry.kind == EntryKind.payment
     me_is_payee = Entry.payee_account_id == account_id
@@ -181,25 +177,36 @@ def balances_for(db: Session, account_id: int, *, include_zero: bool = False) ->
     )
     other_id = case((me_is_payer, Entry.payee_account_id), else_=Entry.payer_account_id)
 
-    net = func.sum(signed).label("net")
-    query = (
-        select(
-            other_id.label("other_id"),
-            Entry.currency,
-            net,
-            Account.display_name,
-            Account.kind,
-        )
-        .join(Account, Account.id == other_id)
+    return (
+        select(other_id.label("other_id"), Entry.currency, func.sum(signed).label("net"))
         .where(
             Entry.status == EntryStatus.accepted,
             or_(me_is_payer, me_is_payee),
         )
-        .group_by(other_id, Entry.currency, Account.display_name, Account.kind)
-        .order_by(Entry.currency, Account.display_name, other_id)
+        .group_by(other_id, Entry.currency)
+    )
+
+
+def balances_for(db: Session, account_id: int, *, include_zero: bool = False) -> list[Balance]:
+    """Net balance per other account and currency, accepted entries only.
+
+    Zero rows (fully settled pairs) are hidden unless `include_zero`; they are a
+    presentation concern, the entries behind them still exist.
+    """
+    pair = _pair_net(account_id).subquery()
+    query = (
+        select(
+            pair.c.other_id,
+            pair.c.currency,
+            pair.c.net,
+            Account.display_name,
+            Account.kind,
+        )
+        .join(Account, Account.id == pair.c.other_id)
+        .order_by(pair.c.currency, Account.display_name, pair.c.other_id)
     )
     if not include_zero:
-        query = query.having(net != 0)
+        query = query.where(pair.c.net != 0)
 
     return [
         Balance(
@@ -285,3 +292,47 @@ def visible_entry(db: Session, *, entry_id: int, viewer_account_id: int) -> Entr
     ):
         raise EntryNotFound(f"entry {entry_id} does not exist")
     return entry
+
+
+@dataclass(frozen=True)
+class BalanceTotals:
+    """Sum over all counterparties for one currency.
+
+    `owed_by_others_minor` is what people owe me, `owed_to_others_minor` is what
+    I owe them (absolute value), `net_minor` is the difference.
+    """
+
+    currency: str
+    owed_by_others_minor: int
+    owed_to_others_minor: int
+    net_minor: int
+
+
+def balance_totals(db: Session, account_id: int) -> list[BalanceTotals]:
+    """Aggregate accepted entries per currency, across every counterparty."""
+    pair = _pair_net(account_id).subquery()
+    owed_by_others = func.sum(case((pair.c.net > 0, pair.c.net), else_=0))
+    owed_to_others = func.sum(case((pair.c.net < 0, -pair.c.net), else_=0))
+    net = func.sum(pair.c.net)
+
+    rows = db.execute(
+        select(
+            pair.c.currency,
+            owed_by_others.label("owed_by_others"),
+            owed_to_others.label("owed_to_others"),
+            net.label("net"),
+        )
+        .group_by(pair.c.currency)
+        .having(or_(owed_by_others != 0, owed_to_others != 0))
+        .order_by(pair.c.currency)
+    ).all()
+
+    return [
+        BalanceTotals(
+            currency=row.currency,
+            owed_by_others_minor=int(row.owed_by_others),
+            owed_to_others_minor=int(row.owed_to_others),
+            net_minor=int(row.net),
+        )
+        for row in rows
+    ]

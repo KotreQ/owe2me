@@ -9,3 +9,10 @@ class BalanceResponse(BaseModel):
     kind: AccountKind
     currency: str
     net_minor: int
+
+
+class BalanceTotalsResponse(BaseModel):
+    currency: str
+    owed_by_others_minor: int
+    owed_to_others_minor: int
+    net_minor: int

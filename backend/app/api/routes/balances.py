@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
-from app.api.schemas.balances import BalanceResponse
+from app.api.schemas.balances import BalanceResponse, BalanceTotalsResponse
 from app.db.session import get_db
 from app.models import User
 from app.services.accounts import AccountNotFound, visible_account
-from app.services.entries import Balance, balances_for
+from app.services.entries import Balance, balance_totals, balances_for
 
 router = APIRouter(prefix="/balances", tags=["balances"])
 
@@ -26,6 +26,23 @@ def list_balances(
     return [
         _response(balance)
         for balance in balances_for(db, user.account_id, include_zero=include_zero)
+    ]
+
+
+@router.get("/totals", response_model=list[BalanceTotalsResponse])
+def totals(
+    user: CurrentUser,
+    db: DbSession,
+) -> list[BalanceTotalsResponse]:
+    """Sum per currency across every counterparty; no conversion between currencies."""
+    return [
+        BalanceTotalsResponse(
+            currency=total.currency,
+            owed_by_others_minor=total.owed_by_others_minor,
+            owed_to_others_minor=total.owed_to_others_minor,
+            net_minor=total.net_minor,
+        )
+        for total in balance_totals(db, user.account_id)
     ]
 
 

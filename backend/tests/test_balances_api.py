@@ -208,3 +208,90 @@ def test_balance_with_settled_account_hides_zero_by_default(
     assert client.get(f"/balances/{bob.id}").json() == []
     zero = client.get(f"/balances/{bob.id}", params={"include_zero": True}).json()
     assert zero[0]["net_minor"] == 0
+
+
+def test_totals_sum_per_currency_across_people(client: TestClient, db: Session) -> None:
+    alice_id = signup(client, ALICE)
+    bob = make_user(db, "bob", "Bob")
+    carol = make_user(db, "carol", "Carol")
+    bob_client = TestClient(app)
+    bob_client.post("/auth/login", json={"username": "bob", "password": "b0b-password"})
+    carol_client = TestClient(app)
+    carol_client.post("/auth/login", json={"username": "carol", "password": "b0b-password"})
+
+    # I owe Bob 30 PLN, Carol owes me 12 PLN, Bob owes me 3 EUR.
+    accepted_entry(client, bob_client, alice_id, bob.id, 3_000, "PLN")
+    accepted_entry(client, carol_client, carol.id, alice_id, 1_200, "PLN")
+    accepted_entry(client, bob_client, bob.id, alice_id, 300, "EUR")
+
+    response = client.get("/balances/totals")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "currency": "EUR",
+            "owed_by_others_minor": 300,
+            "owed_to_others_minor": 0,
+            "net_minor": 300,
+        },
+        {
+            "currency": "PLN",
+            "owed_by_others_minor": 1_200,
+            "owed_to_others_minor": 3_000,
+            "net_minor": -1_800,
+        },
+    ]
+
+    theirs = bob_client.get("/balances/totals").json()
+    assert theirs == [
+        {
+            "currency": "EUR",
+            "owed_by_others_minor": 0,
+            "owed_to_others_minor": 300,
+            "net_minor": -300,
+        },
+        {
+            "currency": "PLN",
+            "owed_by_others_minor": 3_000,
+            "owed_to_others_minor": 0,
+            "net_minor": 3_000,
+        },
+    ]
+
+
+def test_totals_ignore_pending_and_settled_pairs(client: TestClient, db: Session) -> None:
+    alice_id = signup(client, ALICE)
+    bob = make_user(db, "bob", "Bob")
+    bob_client = TestClient(app)
+    bob_client.post("/auth/login", json={"username": "bob", "password": "b0b-password"})
+
+    assert (
+        client.post("/entries", json=debt(alice_id, bob.id, 900, currency="PLN")).status_code == 201
+    )
+    assert client.get("/balances/totals").json() == []
+
+    accepted_entry(client, bob_client, alice_id, bob.id, 1_000, "PLN")
+    payment = client.post(
+        "/entries",
+        json={
+            "payer_account_id": alice_id,
+            "payee_account_id": bob.id,
+            "kind": "payment",
+            "amount_minor": 1_000,
+            "currency": "PLN",
+            "title": "settle",
+        },
+    ).json()
+    bob_client.post(f"/entries/{payment['id']}/accept")
+
+    # Pair nets are aggregated first, so a settled pair leaves nothing behind.
+    assert client.get("/balances/totals").json() == []
+
+
+def test_totals_require_login_and_do_not_shadow_account_route(client: TestClient) -> None:
+    anonymous = TestClient(app)
+    assert anonymous.get("/balances/totals").status_code == 401
+
+    signup(client, ALICE)
+    assert client.get("/balances/totals").json() == []
+    assert client.get("/balances/99999").status_code == 404
