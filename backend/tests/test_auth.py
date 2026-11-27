@@ -9,8 +9,16 @@ from app.db.types import utcnow_naive
 from app.models import Account, AccountKind, AuthSession, User
 
 
-def signup(client: TestClient, username: str = "alice", password: str = "s3cret-pass"):
-    return client.post("/auth/signup", json={"username": username, "password": password})
+def signup(
+    client: TestClient,
+    username: str = "alice",
+    password: str = "s3cret-pass",
+    currency: str = "PLN",
+):
+    return client.post(
+        "/auth/signup",
+        json={"username": username, "password": password, "default_currency": currency},
+    )
 
 
 def test_signup_creates_account_and_logs_in(client: TestClient) -> None:
@@ -20,6 +28,7 @@ def test_signup_creates_account_and_logs_in(client: TestClient) -> None:
     body = response.json()
     assert body["username"] == "alice"
     assert body["display_name"] == "alice"
+    assert body["default_currency"] == "PLN"
     assert isinstance(body["account_id"], int)
     assert "password" not in response.text
 
@@ -35,12 +44,18 @@ def test_signup_creates_account_and_logs_in(client: TestClient) -> None:
 def test_signup_normalizes_username_and_keeps_display_name(client: TestClient) -> None:
     response = client.post(
         "/auth/signup",
-        json={"username": "Alice.B", "password": "s3cret-pass", "display_name": "Alice B."},
+        json={
+            "username": "Alice.B",
+            "password": "s3cret-pass",
+            "default_currency": "eur",
+            "display_name": "Alice B.",
+        },
     )
 
     assert response.status_code == 201
     assert response.json()["username"] == "alice.b"
     assert response.json()["display_name"] == "Alice B."
+    assert response.json()["default_currency"] == "EUR"
 
 
 def test_signup_rejects_taken_username_case_insensitively(client: TestClient) -> None:
@@ -59,7 +74,12 @@ def test_signup_validation(client: TestClient) -> None:
     assert (
         client.post(
             "/auth/signup",
-            json={"username": "alice", "password": "s3cret-pass", "display_name": ""},
+            json={
+                "username": "alice",
+                "password": "s3cret-pass",
+                "default_currency": "PLN",
+                "display_name": "",
+            },
         ).status_code
         == 422
     )
@@ -164,3 +184,36 @@ def test_session_can_be_recreated_after_logout(client: TestClient, db: Session) 
     assert response.status_code == 200
     assert db.scalar(select(AuthSession)) is not None
     assert client.get("/auth/me").status_code == 200
+
+
+def test_signup_requires_currency(client: TestClient) -> None:
+    response = client.post("/auth/signup", json={"username": "alice", "password": "s3cret-pass"})
+
+    assert response.status_code == 422
+
+
+def test_signup_rejects_malformed_currency(client: TestClient) -> None:
+    for currency in ("PL", "PLNX", "P1N", ""):
+        response = signup(client, currency=currency)
+        assert response.status_code == 422, currency
+
+
+def test_update_default_currency(client: TestClient) -> None:
+    assert signup(client, currency="PLN").status_code == 201
+
+    response = client.patch("/auth/me", json={"default_currency": "eur"})
+
+    assert response.status_code == 200
+    assert response.json()["default_currency"] == "EUR"
+    assert client.get("/auth/me").json()["default_currency"] == "EUR"
+
+
+def test_update_default_currency_requires_login(client: TestClient) -> None:
+    assert client.patch("/auth/me", json={"default_currency": "EUR"}).status_code == 401
+
+
+def test_update_default_currency_validation(client: TestClient) -> None:
+    assert signup(client).status_code == 201
+
+    assert client.patch("/auth/me", json={"default_currency": "EURO"}).status_code == 422
+    assert client.get("/auth/me").json()["default_currency"] == "PLN"

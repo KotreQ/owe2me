@@ -52,11 +52,25 @@ def validate_credentials(username: str, password: str) -> str:
     return normalized
 
 
+def normalize_currency(currency: str) -> str:
+    """Currencies are opaque three-letter codes; the frontend owns the allowed list."""
+    code = currency.strip().upper()
+    if len(code) != 3 or not code.isalpha():
+        raise AuthError("currency must be a three-letter code")
+    return code
+
+
 def signup(
-    db: Session, *, username: str, password: str, display_name: str | None = None
+    db: Session,
+    *,
+    username: str,
+    password: str,
+    default_currency: str,
+    display_name: str | None = None,
 ) -> tuple[User, str]:
     """Create a real account and log it in. Returns the user and the raw session token."""
     normalized = validate_credentials(username, password)
+    currency = normalize_currency(default_currency)
     if db.scalar(select(User.id).where(User.username == normalized)) is not None:
         raise UsernameTaken(normalized)
 
@@ -70,6 +84,7 @@ def signup(
         account_id=account.id,
         username=normalized,
         password_hash=hash_password(password),
+        default_currency=currency,
     )
     db.add(user)
     try:
@@ -120,6 +135,12 @@ def user_for_token(db: Session, token: str | None) -> User:
     user = db.scalar(select(User).where(User.account_id == session.account_id))
     if user is None:
         raise InvalidSession
+    return user
+
+
+def set_default_currency(db: Session, user: User, default_currency: str) -> User:
+    user.default_currency = normalize_currency(default_currency)
+    db.commit()
     return user
 
 

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api.routes import auth, health
+from app.api.routes import accounts, auth, health
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -13,6 +13,7 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(accounts.router)
 
 
 @app.get("/", tags=["meta"])
