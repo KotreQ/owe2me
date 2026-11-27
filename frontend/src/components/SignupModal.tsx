@@ -4,6 +4,7 @@ import {
     Button,
     Modal,
     PasswordInput,
+    Select,
     Stack,
     Text,
     TextInput,
@@ -13,10 +14,16 @@ import { useState } from 'react';
 
 import { signup, type Me } from '../api/auth';
 import { ApiError } from '../api/client';
+import { CURRENCIES } from '../data/currencies';
 
 const USERNAME_PATTERN = /^[a-z0-9_.-]{3,50}$/;
 const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 128;
+
+const CURRENCY_OPTIONS = CURRENCIES.map(({ code, name }) => ({
+    value: code,
+    label: `${code} - ${name}`,
+}));
 
 interface SignupModalProps {
     opened: boolean;
@@ -35,12 +42,17 @@ export function SignupModal({
     const [error, setError] = useState<string | null>(null);
 
     const form = useForm({
-        initialValues: { username: '', password: '', repeatPassword: '' },
-        // Validate a field as soon as the user leaves it, not only on submit.
+        initialValues: {
+            username: '',
+            password: '',
+            repeatPassword: '',
+            default_currency: null as string | null,
+        },
         validateInputOnBlur: true,
         transformValues: (values) => ({
             ...values,
             username: values.username.trim().toLowerCase(),
+            default_currency: values.default_currency ?? '',
         }),
         validate: {
             username: (value) =>
@@ -53,6 +65,10 @@ export function SignupModal({
                     : `Password must be minimum ${PASSWORD_MIN} characters`,
             repeatPassword: (value, values) =>
                 value === values.password ? null : 'Passwords do not match',
+            default_currency: (value) =>
+                CURRENCIES.some((c) => c.code === value)
+                    ? null
+                    : 'Select a currency',
         },
     });
 
@@ -68,30 +84,36 @@ export function SignupModal({
         onSwitchToLogin();
     };
 
-    const handleSubmit = form.onSubmit(async ({ username, password }) => {
-        setSubmitting(true);
-        setError(null);
-        try {
-            const user = await signup({ username, password });
-            form.reset();
-            onSuccess(user);
-        } catch (err) {
-            if (err instanceof ApiError && err.status === 409) {
-                form.setFieldError(
-                    'username',
-                    'This username is already taken',
-                );
-            } else {
-                setError(
-                    err instanceof ApiError
-                        ? err.message
-                        : 'Something went wrong. Try again.',
-                );
+    const handleSubmit = form.onSubmit(
+        async ({ username, password, default_currency }) => {
+            setSubmitting(true);
+            setError(null);
+            try {
+                const user = await signup({
+                    username,
+                    password,
+                    default_currency,
+                });
+                form.reset();
+                onSuccess(user);
+            } catch (err) {
+                if (err instanceof ApiError && err.status === 409) {
+                    form.setFieldError(
+                        'username',
+                        'This username is already taken',
+                    );
+                } else {
+                    setError(
+                        err instanceof ApiError
+                            ? err.message
+                            : 'Something went wrong. Try again.',
+                    );
+                }
+            } finally {
+                setSubmitting(false);
             }
-        } finally {
-            setSubmitting(false);
-        }
-    });
+        },
+    );
 
     return (
         <Modal
@@ -117,6 +139,14 @@ export function SignupModal({
                         label='Repeat password'
                         autoComplete='new-password'
                         {...form.getInputProps('repeatPassword')}
+                    />
+                    <Select
+                        label='Default currency'
+                        placeholder='Select currency'
+                        data={CURRENCY_OPTIONS}
+                        searchable
+                        allowDeselect={false}
+                        {...form.getInputProps('default_currency')}
                     />
 
                     {error && (
