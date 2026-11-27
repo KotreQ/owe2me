@@ -8,3 +8,16 @@ __pycache__/
 backend/.env
 
 .DS_Store
+
+# Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+*.log
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.sw?

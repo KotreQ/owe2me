@@ -44,5 +44,29 @@ services:
           path: ./backend/uv.lock
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app
 
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/index.html:/app/index.html:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/package-lock.json
+        - action: rebuild
+          path: ./frontend/vite.config.ts
+        - action: rebuild
+          path: ./frontend/postcss.config.cjs
+
 volumes:
   db_data:
