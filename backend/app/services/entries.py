@@ -41,6 +41,8 @@ class Balance:
     """
 
     other_account_id: int
+    display_name: str
+    kind: AccountKind
     currency: str
     net_minor: int
 
@@ -159,8 +161,12 @@ def cancel_entry(db: Session, *, actor_account_id: int, entry_id: int) -> Entry:
     return entry
 
 
-def balances_for(db: Session, account_id: int) -> list[Balance]:
-    """Net balance per other account and currency, accepted entries only."""
+def balances_for(db: Session, account_id: int, *, include_zero: bool = False) -> list[Balance]:
+    """Net balance per other account and currency, accepted entries only.
+
+    Zero rows (fully settled pairs) are hidden unless `include_zero`; they are a
+    presentation concern, the entries behind them still exist.
+    """
     is_debt = Entry.kind == EntryKind.debt
     is_payment = Entry.kind == EntryKind.payment
     me_is_payee = Entry.payee_account_id == account_id
@@ -175,19 +181,35 @@ def balances_for(db: Session, account_id: int) -> list[Balance]:
     )
     other_id = case((me_is_payer, Entry.payee_account_id), else_=Entry.payer_account_id)
 
-    rows = db.execute(
-        select(other_id.label("other_id"), Entry.currency, func.sum(signed).label("net"))
+    net = func.sum(signed).label("net")
+    query = (
+        select(
+            other_id.label("other_id"),
+            Entry.currency,
+            net,
+            Account.display_name,
+            Account.kind,
+        )
+        .join(Account, Account.id == other_id)
         .where(
             Entry.status == EntryStatus.accepted,
             or_(me_is_payer, me_is_payee),
         )
-        .group_by(other_id, Entry.currency)
-        .order_by(Entry.currency, other_id)
-    ).all()
+        .group_by(other_id, Entry.currency, Account.display_name, Account.kind)
+        .order_by(Entry.currency, Account.display_name, other_id)
+    )
+    if not include_zero:
+        query = query.having(net != 0)
 
     return [
-        Balance(other_account_id=row.other_id, currency=row.currency, net_minor=int(row.net))
-        for row in rows
+        Balance(
+            other_account_id=row.other_id,
+            display_name=row.display_name,
+            kind=row.kind,
+            currency=row.currency,
+            net_minor=int(row.net),
+        )
+        for row in db.execute(query).all()
     ]
 
 
