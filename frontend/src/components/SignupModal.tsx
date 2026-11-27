@@ -1,0 +1,121 @@
+import {
+    Alert,
+    Button,
+    Modal,
+    PasswordInput,
+    Stack,
+    TextInput,
+} from '@mantine/core';
+import { useForm } from '@mantine/form';
+import { useState } from 'react';
+
+import { signup, type Me } from '../api/auth';
+import { ApiError } from '../api/client';
+
+const USERNAME_PATTERN = /^[a-z0-9_.-]{3,50}$/;
+const PASSWORD_MIN = 8;
+const PASSWORD_MAX = 128;
+
+interface SignupModalProps {
+    opened: boolean;
+    onClose: () => void;
+    onSuccess: (user: Me) => void;
+}
+
+export function SignupModal({ opened, onClose, onSuccess }: SignupModalProps) {
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const form = useForm({
+        initialValues: { username: '', password: '', repeatPassword: '' },
+        // Validate a field as soon as the user leaves it, not only on submit.
+        validateInputOnBlur: true,
+        transformValues: (values) => ({
+            ...values,
+            username: values.username.trim().toLowerCase(),
+        }),
+        validate: {
+            username: (value) =>
+                USERNAME_PATTERN.test(value.trim().toLowerCase())
+                    ? null
+                    : '3-50 characters: letters, digits, dot, dash or underscore',
+            password: (value) =>
+                value.length >= PASSWORD_MIN && value.length <= PASSWORD_MAX
+                    ? null
+                    : `Password must be minimum ${PASSWORD_MIN} characters`,
+            repeatPassword: (value, values) =>
+                value === values.password ? null : 'Passwords do not match',
+        },
+    });
+
+    const handleClose = () => {
+        form.reset();
+        setError(null);
+        onClose();
+    };
+
+    const handleSubmit = form.onSubmit(async ({ username, password }) => {
+        setSubmitting(true);
+        setError(null);
+        try {
+            const user = await signup({ username, password });
+            form.reset();
+            onSuccess(user);
+        } catch (err) {
+            if (err instanceof ApiError && err.status === 409) {
+                form.setFieldError(
+                    'username',
+                    'This username is already taken',
+                );
+            } else {
+                setError(
+                    err instanceof ApiError
+                        ? err.message
+                        : 'Something went wrong. Try again.',
+                );
+            }
+        } finally {
+            setSubmitting(false);
+        }
+    });
+
+    return (
+        <Modal
+            opened={opened}
+            onClose={handleClose}
+            title='Create account'
+            centered
+        >
+            <form onSubmit={handleSubmit} noValidate>
+                <Stack>
+                    <TextInput
+                        label='Username'
+                        autoComplete='username'
+                        data-autofocus
+                        {...form.getInputProps('username')}
+                    />
+                    <PasswordInput
+                        label='Password'
+                        autoComplete='new-password'
+                        {...form.getInputProps('password')}
+                    />
+                    <PasswordInput
+                        label='Repeat password'
+                        autoComplete='new-password'
+                        {...form.getInputProps('repeatPassword')}
+                    />
+
+                    {error && (
+                        <Alert color='red' variant='light'>
+                            {error}
+                        </Alert>
+                    )}
+
+                    <Button type='submit' loading={submitting} fullWidth>
+                        Create account
+                    </Button>
+                </Stack>
+            </form>
+        </Modal>
+    );
+}
