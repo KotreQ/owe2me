@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     database_url: str = "mysql+pymysql://owe2me:owe2me@db:3306/owe2me?charset=utf8mb4"
     database_echo: bool = False
 
+    session_cookie_name: str = "owe2me_session"
+    session_ttl_days: int = 30
+    session_cookie_secure: bool = False
+    session_cookie_samesite: str = "lax"
+
 
 @lru_cache
 def get_settings() -> Settings:

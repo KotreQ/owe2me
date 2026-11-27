@@ -1,12 +1,15 @@
 from collections.abc import Callable
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
 from app.db.base import Base
+from app.db.session import get_db
+from app.main import app
 from app.models import Account, AccountKind, User
 
 
@@ -21,6 +24,17 @@ def db() -> Session:
     with Session(engine) as session:
         yield session
     engine.dispose()
+
+
+@pytest.fixture
+def client(db: Session) -> TestClient:
+    def override_get_db() -> Session:
+        return db
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
