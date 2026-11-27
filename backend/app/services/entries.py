@@ -9,6 +9,30 @@ from app.db.types import utcnow_naive
 from app.models import Account, AccountKind, Entry, EntryKind, EntryStatus
 
 
+class EntryError(ValueError):
+    """Base class for expected entry failures.
+
+    Still a `ValueError` so existing callers keep working; the API layer maps the
+    subclasses to 404/403/409/422.
+    """
+
+
+class EntryNotFound(EntryError):
+    pass
+
+
+class EntryForbidden(EntryError):
+    pass
+
+
+class EntryConflict(EntryError):
+    pass
+
+
+class EntryInvalid(EntryError):
+    pass
+
+
 @dataclass(frozen=True)
 class Balance:
     """Net position with one other account in one currency.
@@ -24,23 +48,23 @@ class Balance:
 def _clean_title(title: str) -> str:
     cleaned = title.strip()
     if not cleaned:
-        raise ValueError("title must not be empty")
+        raise EntryInvalid("title must not be empty")
     if len(cleaned) > 120:
-        raise ValueError("title must be at most 120 characters")
+        raise EntryInvalid("title must be at most 120 characters")
     return cleaned
 
 
 def _clean_currency(currency: str) -> str:
     cleaned = currency.strip().upper()
     if len(cleaned) != 3 or not cleaned.isalpha():
-        raise ValueError("currency must be a three-letter ISO 4217 code")
+        raise EntryInvalid("currency must be a three-letter code")
     return cleaned
 
 
 def _get_account(db: Session, account_id: int) -> Account:
     account = db.get(Account, account_id)
     if account is None:
-        raise ValueError(f"account {account_id} does not exist")
+        raise EntryNotFound(f"account {account_id} does not exist")
     return account
 
 
@@ -62,13 +86,13 @@ def create_entry(
     account turns it back into a pending entry for the real user to decide.
     """
     if payer_account_id == payee_account_id:
-        raise ValueError("payer and payee must differ")
+        raise EntryInvalid("payer and payee must differ")
     if actor_account_id not in (payer_account_id, payee_account_id):
-        raise ValueError("actor must be one of the entry's parties")
+        raise EntryNotFound("actor must be one of the entry's parties")
     if not isinstance(amount_minor, int) or isinstance(amount_minor, bool):
-        raise ValueError("amount_minor must be an integer")
+        raise EntryInvalid("amount_minor must be an integer")
     if amount_minor <= 0:
-        raise ValueError("amount_minor must be positive")
+        raise EntryInvalid("amount_minor must be positive")
 
     payer = _get_account(db, payer_account_id)
     payee = _get_account(db, payee_account_id)
@@ -76,7 +100,7 @@ def create_entry(
 
     if counterparty.kind is AccountKind.local:
         if counterparty.owner_account_id != actor_account_id:
-            raise ValueError("a local account can only trade with its owner")
+            raise EntryNotFound("a local account can only trade with its owner")
         status = EntryStatus.accepted
         provisional = True
     else:
@@ -104,13 +128,13 @@ def decide_entry(db: Session, *, actor_account_id: int, entry_id: int, accept: b
     """Accept or reject a pending entry as its non-creator party."""
     entry = db.get(Entry, entry_id)
     if entry is None:
-        raise ValueError(f"entry {entry_id} does not exist")
-    if entry.status is not EntryStatus.pending:
-        raise ValueError("only pending entries can be decided")
-    if actor_account_id == entry.created_by_account_id:
-        raise ValueError("the creator cannot decide their own entry")
+        raise EntryNotFound(f"entry {entry_id} does not exist")
     if actor_account_id not in (entry.payer_account_id, entry.payee_account_id):
-        raise ValueError("only the counterparty can decide this entry")
+        raise EntryNotFound("only the counterparty can decide this entry")
+    if actor_account_id == entry.created_by_account_id:
+        raise EntryForbidden("the creator cannot decide their own entry")
+    if entry.status is not EntryStatus.pending:
+        raise EntryConflict("only pending entries can be decided")
 
     entry.status = EntryStatus.accepted if accept else EntryStatus.rejected
     entry.provisional = False
@@ -124,12 +148,10 @@ def decide_entry(db: Session, *, actor_account_id: int, entry_id: int, accept: b
 def cancel_entry(db: Session, *, actor_account_id: int, entry_id: int) -> Entry:
     """Cancel a pending entry as its creator."""
     entry = db.get(Entry, entry_id)
-    if entry is None:
-        raise ValueError(f"entry {entry_id} does not exist")
-    if entry.created_by_account_id != actor_account_id:
-        raise ValueError("only the creator can cancel this entry")
+    if entry is None or entry.created_by_account_id != actor_account_id:
+        raise EntryNotFound("only the creator can cancel this entry")
     if entry.status is not EntryStatus.pending:
-        raise ValueError("only pending entries can be cancelled")
+        raise EntryConflict("only pending entries can be cancelled")
 
     entry.status = EntryStatus.cancelled
     db.flush()
@@ -180,3 +202,64 @@ def entries_between(db: Session, account_a_id: int, account_b_id: int) -> list[E
             select(Entry).where(or_(*pair)).order_by(Entry.created_at.desc(), Entry.id.desc())
         )
     )
+
+
+@dataclass(frozen=True)
+class EntryPage:
+    items: list[Entry]
+    total: int
+
+
+def list_entries(
+    db: Session,
+    *,
+    account_id: int,
+    with_account_id: int | None = None,
+    status: EntryStatus | None = None,
+    currency: str | None = None,
+    exclude_created_by_me: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+) -> EntryPage:
+    """Entries the account is a party to, newest first, with a total count."""
+    me_is_payer = Entry.payer_account_id == account_id
+    me_is_payee = Entry.payee_account_id == account_id
+    conditions = [or_(me_is_payer, me_is_payee)]
+
+    if with_account_id is not None:
+        conditions.append(
+            or_(
+                (Entry.payer_account_id == account_id)
+                & (Entry.payee_account_id == with_account_id),
+                (Entry.payee_account_id == account_id)
+                & (Entry.payer_account_id == with_account_id),
+            )
+        )
+    if status is not None:
+        conditions.append(Entry.status == status)
+    if currency:
+        conditions.append(Entry.currency == currency.strip().upper())
+    if exclude_created_by_me:
+        conditions.append(Entry.created_by_account_id != account_id)
+
+    total = db.scalar(select(func.count(Entry.id)).where(*conditions)) or 0
+    items = list(
+        db.scalars(
+            select(Entry)
+            .where(*conditions)
+            .order_by(Entry.created_at.desc(), Entry.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    )
+    return EntryPage(items=items, total=int(total))
+
+
+def visible_entry(db: Session, *, entry_id: int, viewer_account_id: int) -> Entry:
+    entry = db.get(Entry, entry_id)
+    if entry is None or viewer_account_id not in (
+        entry.payer_account_id,
+        entry.payee_account_id,
+    ):
+        raise EntryNotFound(f"entry {entry_id} does not exist")
+    return entry
