@@ -32,6 +32,10 @@ services:
       DEBUG: ${DEBUG:-false}
       DATABASE_URL: mysql+pymysql://${MYSQL_USER:-owe2me}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-owe2me}?charset=utf8mb4
       DATABASE_ECHO: ${DATABASE_ECHO:-false}
+      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-owe2me_session}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-lax}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
