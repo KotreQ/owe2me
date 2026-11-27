@@ -44,6 +44,7 @@ class User(Base):
     account_id: Mapped[int] = mapped_column(BigInt, sa.ForeignKey("accounts.id"), unique=True)
     username: Mapped[str] = mapped_column(sa.String(50), unique=True)
     password_hash: Mapped[str] = mapped_column(sa.String(255))
+    default_currency: Mapped[str] = mapped_column(sa.CHAR(3))
     created_at: Mapped[sa.DateTime] = mapped_column(
         Timestamp, default=utcnow_naive, server_default=sa.func.now()
     )

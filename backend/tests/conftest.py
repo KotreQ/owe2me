@@ -43,7 +43,14 @@ def make_user(db: Session) -> Callable[[str], Account]:
         account = Account(kind=AccountKind.user, display_name=name)
         db.add(account)
         db.flush()
-        db.add(User(account_id=account.id, username=name.lower(), password_hash="x"))
+        db.add(
+            User(
+                account_id=account.id,
+                username=name.lower(),
+                password_hash="x",
+                default_currency="PLN",
+            )
+        )
         db.commit()
         return account
 

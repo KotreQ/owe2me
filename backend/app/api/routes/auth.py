@@ -4,7 +4,7 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser
-from app.api.schemas.auth import LoginRequest, MeResponse, SignupRequest
+from app.api.schemas.auth import LoginRequest, MeResponse, SignupRequest, UpdateMeRequest
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models import User
@@ -35,6 +35,7 @@ def _me(db: Session, user: User) -> MeResponse:
         account_id=account.id,
         username=user.username,
         display_name=account.display_name,
+        default_currency=user.default_currency,
     )
 
 
@@ -45,6 +46,7 @@ def signup(body: SignupRequest, response: Response, db: DbSession) -> MeResponse
             db,
             username=body.username,
             password=body.password,
+            default_currency=body.default_currency,
             display_name=body.display_name,
         )
     except UsernameTaken as exc:
@@ -53,7 +55,7 @@ def signup(body: SignupRequest, response: Response, db: DbSession) -> MeResponse
         ) from exc
     except AuthError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
 
     _set_session_cookie(response, token)
@@ -87,3 +89,14 @@ def logout(
 @router.get("/me", response_model=MeResponse)
 def me(user: CurrentUser, db: DbSession) -> MeResponse:
     return _me(db, user)
+
+
+@router.patch("/me", response_model=MeResponse)
+def update_me(body: UpdateMeRequest, user: CurrentUser, db: DbSession) -> MeResponse:
+    try:
+        updated = auth.set_default_currency(db, user, body.default_currency)
+    except AuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return _me(db, updated)

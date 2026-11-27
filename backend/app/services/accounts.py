@@ -1,6 +1,7 @@
 """Account lifecycle: local nicknames and linking them to real users."""
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select, union, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Account, AccountKind, Entry, EntryStatus
@@ -22,7 +23,7 @@ def link_local_account(
     until then. Returns the number of rewritten entries.
     """
     if alias_account_id == target_account_id:
-        raise ValueError("an account cannot be linked to itself")
+        raise AccountConflict("an account cannot be linked to itself")
 
     locked = {
         account.id: account
@@ -36,19 +37,19 @@ def link_local_account(
     target = locked.get(target_account_id)
 
     if alias is None or target is None:
-        raise ValueError("alias or target account does not exist")
+        raise AccountNotFound("alias or target account does not exist")
     if alias.kind is not AccountKind.local:
-        raise ValueError("only local accounts can be linked")
+        raise AccountConflict("only local accounts can be linked")
     if target.kind is not AccountKind.user:
-        raise ValueError("the target must be a real user account")
+        raise AccountConflict("the target must be a real user account")
     if alias.owner_account_id != actor_account_id:
-        raise ValueError("only the owner of the local account can link it")
+        raise AccountNotFound("only the owner of the local account can link it")
 
     if (
         db.scalar(select(Entry.id).where(Entry.created_by_account_id == alias_account_id).limit(1))
         is not None
     ):
-        raise ValueError("a local account cannot be an entry creator")
+        raise AccountConflict("a local account cannot be an entry creator")
 
     pair = or_(
         Entry.payer_account_id == alias_account_id,
@@ -83,3 +84,81 @@ def link_local_account(
     db.flush()
     db.commit()
     return len(entry_ids)
+
+
+class AccountError(Exception):
+    """Base class for expected account failures."""
+
+
+class AccountNotFound(AccountError):
+    pass
+
+
+class AccountConflict(AccountError):
+    pass
+
+
+def create_local_account(db: Session, *, owner_account_id: int, display_name: str) -> Account:
+    """Create a nickname owned by one account. Names are unique per owner."""
+    name = display_name.strip()
+    if not name:
+        raise AccountError("display name must not be blank")
+    existing = db.scalar(
+        select(Account.id).where(
+            Account.owner_account_id == owner_account_id,
+            Account.display_name == name,
+        )
+    )
+    if existing is not None:
+        raise AccountConflict("you already have a contact with that name")
+
+    account = Account(kind=AccountKind.local, display_name=name, owner_account_id=owner_account_id)
+    db.add(account)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise AccountConflict("you already have a contact with that name") from exc
+    return account
+
+
+def list_contacts(db: Session, *, account_id: int) -> list[Account]:
+    """Nicknames I own plus real accounts I already have entries with."""
+    owned = select(Account.id).where(
+        Account.owner_account_id == account_id,
+        Account.kind == AccountKind.local,
+    )
+    counterparties = union(
+        select(Entry.payer_account_id).where(Entry.payee_account_id == account_id),
+        select(Entry.payee_account_id).where(Entry.payer_account_id == account_id),
+    )
+    return list(
+        db.scalars(
+            select(Account)
+            .where(or_(Account.id.in_(owned), Account.id.in_(counterparties)))
+            .order_by(Account.display_name, Account.id)
+        )
+    )
+
+
+def visible_account(db: Session, *, account_id: int, viewer_account_id: int) -> Account:
+    """An account the viewer may see: themselves, their own nickname, or a ledger counterparty."""
+    account = db.get(Account, account_id)
+    if account is None:
+        raise AccountNotFound
+    if account.id == viewer_account_id or account.owner_account_id == viewer_account_id:
+        return account
+    shares_entry = db.scalar(
+        select(Entry.id)
+        .where(
+            or_(
+                Entry.payer_account_id == viewer_account_id,
+                Entry.payee_account_id == viewer_account_id,
+            ),
+            or_(Entry.payer_account_id == account.id, Entry.payee_account_id == account.id),
+        )
+        .limit(1)
+    )
+    if shares_entry is None:
+        raise AccountNotFound
+    return account
