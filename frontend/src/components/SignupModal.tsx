@@ -1,9 +1,11 @@
 import {
     Alert,
+    Anchor,
     Button,
     Modal,
     PasswordInput,
     Stack,
+    Text,
     TextInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -20,9 +22,15 @@ interface SignupModalProps {
     opened: boolean;
     onClose: () => void;
     onSuccess: (user: Me) => void;
+    onSwitchToLogin: () => void;
 }
 
-export function SignupModal({ opened, onClose, onSuccess }: SignupModalProps) {
+export function SignupModal({
+    opened,
+    onClose,
+    onSuccess,
+    onSwitchToLogin,
+}: SignupModalProps) {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +60,12 @@ export function SignupModal({ opened, onClose, onSuccess }: SignupModalProps) {
         form.reset();
         setError(null);
         onClose();
+    };
+
+    const handleSwitch = () => {
+        form.reset();
+        setError(null);
+        onSwitchToLogin();
     };
 
     const handleSubmit = form.onSubmit(async ({ username, password }) => {
@@ -114,6 +128,13 @@ export function SignupModal({ opened, onClose, onSuccess }: SignupModalProps) {
                     <Button type='submit' loading={submitting} fullWidth>
                         Create account
                     </Button>
+
+                    <Text size='sm' ta='center'>
+                        Already have an account?{' '}
+                        <Anchor component='button' type='button' onClick={handleSwitch}>
+                            Log in
+                        </Anchor>
+                    </Text>
                 </Stack>
             </form>
         </Modal>

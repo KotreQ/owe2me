@@ -15,19 +15,28 @@ import logo from '../assets/logo.svg';
 
 interface NavbarProps {
     user?: Me | null;
+    loading?: boolean;
     onLogin?: () => void;
     onSignup?: () => void;
     onLogout?: () => void;
 }
 
-export function Navbar({ user, onLogin, onSignup, onLogout }: NavbarProps) {
+export function Navbar({
+    user,
+    loading,
+    onLogin,
+    onSignup,
+    onLogout,
+}: NavbarProps) {
     return (
         <Box component='header' py='md'>
             <Container size={1000}>
                 <Group justify='space-between'>
                     <Image src={logo} alt='owe2me' h={16} w='auto' />
 
-                    {user ? (
+                    {loading ? (
+                        <Box h={36} />
+                    ) : user ? (
                         <Menu
                             position='bottom-end'
                             width={160}
