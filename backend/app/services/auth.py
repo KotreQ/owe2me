@@ -138,8 +138,23 @@ def user_for_token(db: Session, token: str | None) -> User:
     return user
 
 
-def set_default_currency(db: Session, user: User, default_currency: str) -> User:
-    user.default_currency = normalize_currency(default_currency)
+def update_profile(
+    db: Session,
+    user: User,
+    *,
+    default_currency: str | None = None,
+    display_name: str | None = None,
+) -> User:
+    """Change the user's display currency and/or public name."""
+    if default_currency is not None:
+        user.default_currency = normalize_currency(default_currency)
+    if display_name is not None:
+        cleaned = display_name.strip()
+        if not cleaned:
+            raise AuthError("display name must not be blank")
+        if len(cleaned) > 100:
+            raise AuthError("display name must be at most 100 characters")
+        account_for(db, user.account_id).display_name = cleaned
     db.commit()
     return user
 
