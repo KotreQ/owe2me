@@ -196,3 +196,55 @@ def test_cannot_link_a_real_account_or_someone_elses_nickname(
     assert foreign_response.status_code == 404
     assert db.get(Account, foreign.id) is not None
     assert db.scalar(select(User).where(User.username == "bob")) is not None
+
+
+def test_lookup_user_by_exact_username(client: TestClient, db: Session) -> None:
+    alice = signup(client, ALICE)
+    bob = create_bob(db)
+
+    response = client.get("/accounts/lookup", params={"username": "  BOB "})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": bob.id,
+        "kind": "user",
+        "display_name": "Bob",
+        "username": "bob",
+        "owner_account_id": None,
+    }
+    assert response.json()["id"] != alice["account_id"]
+
+
+def test_lookup_allows_looking_up_yourself(client: TestClient) -> None:
+    alice = signup(client, ALICE)
+
+    response = client.get("/accounts/lookup", params={"username": "alice"})
+
+    assert response.status_code == 200
+    assert response.json()["id"] == alice["account_id"]
+
+
+def test_lookup_does_not_find_nicknames_or_partial_names(client: TestClient, db: Session) -> None:
+    signup(client, ALICE)
+    create_bob(db)
+    assert client.post("/accounts/local", json={"display_name": "Bobby"}).status_code == 201
+
+    for username in ("Bobby", "bo", "nobody", ""):
+        response = client.get("/accounts/lookup", params={"username": username})
+        assert response.status_code in (404, 422), username
+        if response.status_code == 404:
+            assert response.json() == {"detail": "user not found"}
+
+
+def test_lookup_requires_login(client: TestClient) -> None:
+    assert client.get("/accounts/lookup", params={"username": "bob"}).status_code == 401
+
+
+def test_lookup_does_not_shadow_account_route(client: TestClient, db: Session) -> None:
+    signup(client, ALICE)
+    bob = create_bob(db)
+
+    assert client.get("/accounts/lookup", params={"username": "bob"}).status_code == 200
+    assert client.get("/accounts/99999").status_code == 404
+    # Lookup works before any shared entry exists; the account route still hides it.
+    assert client.get(f"/accounts/{bob.id}").status_code == 404

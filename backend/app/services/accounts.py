@@ -4,7 +4,7 @@ from sqlalchemy import or_, select, union, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Account, AccountKind, Entry, EntryStatus
+from app.models import Account, AccountKind, Entry, EntryStatus, User
 
 
 def link_local_account(
@@ -162,3 +162,11 @@ def visible_account(db: Session, *, account_id: int, viewer_account_id: int) -> 
     if shares_entry is None:
         raise AccountNotFound
     return account
+
+
+def find_user_by_username(db: Session, username: str) -> User | None:
+    """Exact match on a real user's login name. Local nicknames are never found."""
+    normalized = username.strip().lower()
+    if not normalized:
+        return None
+    return db.scalar(select(User).where(User.username == normalized))

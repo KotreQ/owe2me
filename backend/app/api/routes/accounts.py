@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -63,6 +63,22 @@ def list_contacts(user: CurrentUser, db: DbSession) -> list[AccountResponse]:
         _response(db, account)
         for account in accounts_service.list_contacts(db, account_id=user.account_id)
     ]
+
+
+@router.get("/lookup", response_model=AccountResponse)
+def lookup_user(
+    user: CurrentUser,
+    db: DbSession,
+    username: Annotated[str, Query(min_length=1, max_length=50)],
+) -> AccountResponse:
+    """Resolve an exact login name to an account id so a real user can be added."""
+    found = accounts_service.find_user_by_username(db, username)
+    if found is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+    account = db.get(Account, found.account_id)
+    if account is None:  # pragma: no cover - users always have an account
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
+    return _response(db, account)
 
 
 @router.get("/{account_id}", response_model=AccountResponse)
