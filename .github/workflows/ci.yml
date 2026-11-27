@@ -27,6 +27,43 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pytest -q
 
+  backend-mysql:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: owe2me_test
+          MYSQL_USER: owe2me
+          MYSQL_PASSWORD: owe2me
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uowe2me -powe2me"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DATABASE_URL: mysql+pymysql://owe2me:owe2me@127.0.0.1:3306/owe2me_test?charset=utf8mb4
+      TEST_MYSQL_URL: mysql+pymysql://owe2me:owe2me@127.0.0.1:3306/owe2me_test?charset=utf8mb4
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - run: uv sync --frozen
+      - run: uv run alembic upgrade head
+      - run: uv run alembic check
+      - run: uv run pytest -q
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
