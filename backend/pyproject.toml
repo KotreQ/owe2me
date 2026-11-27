@@ -10,6 +10,7 @@ dependencies = [
     "pymysql>=1.1",
     "cryptography>=43",
     "pydantic-settings>=2.6",
+    "alembic>=1.14",
 ]
 
 [dependency-groups]
