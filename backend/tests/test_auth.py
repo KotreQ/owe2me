@@ -217,3 +217,62 @@ def test_update_default_currency_validation(client: TestClient) -> None:
 
     assert client.patch("/auth/me", json={"default_currency": "EURO"}).status_code == 422
     assert client.get("/auth/me").json()["default_currency"] == "PLN"
+
+
+def test_update_display_name(client: TestClient) -> None:
+    assert signup(client).status_code == 201
+
+    response = client.patch("/auth/me", json={"display_name": "Alicja B."})
+
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "Alicja B."
+    assert response.json()["username"] == "alice"
+    assert client.get("/auth/me").json()["display_name"] == "Alicja B."
+
+
+def test_update_display_name_touches_existing_entries(client: TestClient, db: Session) -> None:
+    from app.models import Account
+    from app.services.entries import create_entry
+
+    alice = signup(client)
+    bob = Account(kind="user", display_name="Bob")
+    db.add(bob)
+    db.flush()
+    db.add(User(account_id=bob.id, username="bob", password_hash="x", default_currency="PLN"))
+    db.commit()
+    entry = create_entry(
+        db,
+        actor_account_id=alice.json()["account_id"],
+        payer_account_id=alice.json()["account_id"],
+        payee_account_id=bob.id,
+        kind="debt",
+        amount_minor=100,
+        currency="PLN",
+        title="tea",
+    )
+
+    assert client.patch("/auth/me", json={"display_name": "Alicja"}).status_code == 200
+
+    fetched = client.get(f"/entries/{entry.id}").json()
+    assert fetched["payer_display_name"] == "Alicja"
+    assert fetched["payee_display_name"] == "Bob"
+
+
+def test_update_profile_rejects_empty_and_blank(client: TestClient) -> None:
+    assert signup(client).status_code == 201
+
+    assert client.patch("/auth/me", json={}).status_code == 422
+    assert client.patch("/auth/me", json={"display_name": ""}).status_code == 422
+    assert client.patch("/auth/me", json={"display_name": "   "}).status_code == 422
+    assert client.patch("/auth/me", json={"display_name": "x" * 101}).status_code == 422
+    assert client.get("/auth/me").json()["display_name"] == "alice"
+
+
+def test_update_both_profile_fields(client: TestClient) -> None:
+    assert signup(client).status_code == 201
+
+    response = client.patch("/auth/me", json={"display_name": "Alicja", "default_currency": "eur"})
+
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "Alicja"
+    assert response.json()["default_currency"] == "EUR"

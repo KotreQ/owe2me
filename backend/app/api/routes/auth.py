@@ -94,7 +94,12 @@ def me(user: CurrentUser, db: DbSession) -> MeResponse:
 @router.patch("/me", response_model=MeResponse)
 def update_me(body: UpdateMeRequest, user: CurrentUser, db: DbSession) -> MeResponse:
     try:
-        updated = auth.set_default_currency(db, user, body.default_currency)
+        updated = auth.update_profile(
+            db,
+            user,
+            default_currency=body.default_currency,
+            display_name=body.display_name,
+        )
     except AuthError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
