@@ -100,7 +100,7 @@ def test_balances_report_local_nickname_kind(client: TestClient) -> None:
     created = client.post(
         "/entries",
         json={
-            "payer_account_id": nickname["id"],
+            "payer_account_id": nickname["account_id"],
             "payee_account_id": me,
             "kind": "debt",
             "amount_minor": 3_000,
@@ -114,7 +114,7 @@ def test_balances_report_local_nickname_kind(client: TestClient) -> None:
 
     assert balances == [
         {
-            "account_id": nickname["id"],
+            "account_id": nickname["account_id"],
             "display_name": "Bobby",
             "kind": "local",
             "currency": "PLN",

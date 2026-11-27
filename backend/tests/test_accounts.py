@@ -39,7 +39,7 @@ def test_accounts_require_login(client: TestClient) -> None:
 
 
 def test_create_local_contact(client: TestClient) -> None:
-    alice = signup(client, ALICE)
+    signup(client, ALICE)
 
     response = client.post("/accounts/local", json={"display_name": "Bob"})
 
@@ -47,7 +47,6 @@ def test_create_local_contact(client: TestClient) -> None:
     body = response.json()
     assert body["kind"] == "local"
     assert body["display_name"] == "Bob"
-    assert body["owner_account_id"] == alice["account_id"]
     assert body["username"] is None
 
 
@@ -97,14 +96,13 @@ def test_list_contacts_includes_nicknames_and_counterparties(
     bob_row = next(a for a in after if a["display_name"] == "Bob")
     assert bob_row["kind"] == "user"
     assert bob_row["username"] == "bob"
-    assert bob_row["owner_account_id"] is None
 
 
 def test_get_own_local_account(client: TestClient) -> None:
     signup(client, ALICE)
     created = client.post("/accounts/local", json={"display_name": "Bob"}).json()
 
-    response = client.get(f"/accounts/{created['id']}")
+    response = client.get(f"/accounts/{created['account_id']}")
 
     assert response.status_code == 200
     assert response.json() == created
@@ -129,7 +127,7 @@ def test_link_nickname_rewrites_entries_and_deletes_it(client: TestClient, db: S
     create_entry(
         db,
         actor_account_id=alice["account_id"],
-        payer_account_id=nickname["id"],
+        payer_account_id=nickname["account_id"],
         payee_account_id=alice["account_id"],
         kind=EntryKind.debt,
         amount_minor=2_000,
@@ -137,16 +135,18 @@ def test_link_nickname_rewrites_entries_and_deletes_it(client: TestClient, db: S
         title="pizza",
     )
 
-    response = client.post(f"/accounts/{nickname['id']}/link", json={"target_username": "BOB"})
+    response = client.post(
+        f"/accounts/{nickname['account_id']}/link", json={"target_username": "BOB"}
+    )
 
     assert response.status_code == 200
     body = response.json()
     assert body["rewritten_entries"] == 1
-    assert body["account"]["id"] == bob.id
+    assert body["account"]["account_id"] == bob.id
     assert body["account"]["username"] == "bob"
 
-    assert client.get(f"/accounts/{nickname['id']}").status_code == 404
-    assert db.get(Account, nickname["id"]) is None
+    assert client.get(f"/accounts/{nickname['account_id']}").status_code == 404
+    assert db.get(Account, nickname["account_id"]) is None
 
     pending = client.get("/accounts").json()
     assert [a["display_name"] for a in pending] == ["Bob"]
@@ -156,7 +156,9 @@ def test_link_unknown_target(client: TestClient) -> None:
     signup(client, ALICE)
     nickname = client.post("/accounts/local", json={"display_name": "Bob"}).json()
 
-    response = client.post(f"/accounts/{nickname['id']}/link", json={"target_username": "ghost"})
+    response = client.post(
+        f"/accounts/{nickname['account_id']}/link", json={"target_username": "ghost"}
+    )
 
     assert response.status_code == 404
 
@@ -165,7 +167,9 @@ def test_cannot_link_to_yourself(client: TestClient) -> None:
     signup(client, ALICE)
     nickname = client.post("/accounts/local", json={"display_name": "Alice"}).json()
 
-    response = client.post(f"/accounts/{nickname['id']}/link", json={"target_username": "alice"})
+    response = client.post(
+        f"/accounts/{nickname['account_id']}/link", json={"target_username": "alice"}
+    )
 
     assert response.status_code == 404
 
@@ -206,13 +210,11 @@ def test_lookup_user_by_exact_username(client: TestClient, db: Session) -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "id": bob.id,
-        "kind": "user",
+        "account_id": bob.id,
         "display_name": "Bob",
         "username": "bob",
-        "owner_account_id": None,
     }
-    assert response.json()["id"] != alice["account_id"]
+    assert response.json()["account_id"] != alice["account_id"]
 
 
 def test_lookup_allows_looking_up_yourself(client: TestClient) -> None:
@@ -221,7 +223,7 @@ def test_lookup_allows_looking_up_yourself(client: TestClient) -> None:
     response = client.get("/accounts/lookup", params={"username": "alice"})
 
     assert response.status_code == 200
-    assert response.json()["id"] == alice["account_id"]
+    assert response.json()["account_id"] == alice["account_id"]
 
 
 def test_lookup_does_not_find_nicknames_or_partial_names(client: TestClient, db: Session) -> None:

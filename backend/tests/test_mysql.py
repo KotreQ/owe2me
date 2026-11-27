@@ -135,7 +135,7 @@ def test_local_nickname_link_on_mysql(api: TestClient) -> None:
     entry = api.post(
         "/entries",
         json={
-            "payer_account_id": nickname.json()["id"],
+            "payer_account_id": nickname.json()["account_id"],
             "payee_account_id": alice["account_id"],
             "kind": "debt",
             "amount_minor": 4_000,
@@ -146,12 +146,13 @@ def test_local_nickname_link_on_mysql(api: TestClient) -> None:
     assert entry.status_code == 201, entry.text
     assert entry.json()["provisional"] is True
 
-    linked = api.post(f"/accounts/{nickname.json()['id']}/link", json={"target_username": "bob"})
+    nickname_id = nickname.json()["account_id"]
+    linked = api.post(f"/accounts/{nickname_id}/link", json={"target_username": "bob"})
     assert linked.status_code == 200, linked.text
     assert linked.json()["rewritten_entries"] == 1
-    assert linked.json()["account"]["id"] == bob["account_id"]
+    assert linked.json()["account"]["account_id"] == bob["account_id"]
 
-    assert api.get(f"/accounts/{nickname.json()['id']}").status_code == 404
+    assert api.get(f"/accounts/{nickname_id}").status_code == 404
     assert api.get("/entries/pending").json()["total"] == 0
     assert bob_api.get("/entries/pending").json()["total"] == 1
     assert bob_api.get("/balances").json() == []
