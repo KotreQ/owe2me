@@ -24,6 +24,9 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "mysql: integration tests that need TEST_MYSQL_URL and a migrated MySQL database",
+]
 
 [tool.ruff]
 line-length = 100
