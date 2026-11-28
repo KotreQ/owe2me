@@ -7,3 +7,8 @@ export interface Currency {
 }
 
 export const CURRENCIES: Currency[] = currencies;
+
+export const CURRENCY_OPTIONS = CURRENCIES.map(({ code, name }) => ({
+    value: code,
+    label: `${code} - ${name}`,
+}));
