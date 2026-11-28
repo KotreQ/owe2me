@@ -3,6 +3,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { useEffect, useState } from 'react';
 
 import { logout, me, type Me } from './api/auth';
+import { AddEntryModal } from './components/AddEntryModal';
 import { DebtsList } from './components/DebtsList';
 import { LoginModal } from './components/LoginModal';
 import { Navbar } from './components/Navbar';
@@ -13,6 +14,8 @@ export default function App() {
     const [loading, setLoading] = useState(true);
     const [loginOpened, login] = useDisclosure(false);
     const [signupOpened, signup] = useDisclosure(false);
+    const [addEntryOpened, addEntry] = useDisclosure(false);
+    const [listVersion, setListVersion] = useState(0);
 
     // Restore the session after a page refresh. A 401 just means nobody is logged in.
     useEffect(() => {
@@ -70,8 +73,15 @@ export default function App() {
             {user && (
                 <Container size={1000} pb={64}>
                     <DebtsList
-                        key={user.account_id}
+                        key={`${user.account_id}-${listVersion}`}
                         defaultCurrency={user.default_currency}
+                        onAddEntry={addEntry.open}
+                    />
+                    <AddEntryModal
+                        opened={addEntryOpened}
+                        onClose={addEntry.close}
+                        onCreated={() => setListVersion((version) => version + 1)}
+                        user={user}
                     />
                 </Container>
             )}

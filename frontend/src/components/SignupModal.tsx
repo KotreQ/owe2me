@@ -14,16 +14,11 @@ import { useState } from 'react';
 
 import { signup, type Me } from '../api/auth';
 import { ApiError } from '../api/client';
-import { CURRENCIES } from '../data/currencies';
+import { CURRENCIES, CURRENCY_OPTIONS } from '../data/currencies';
 
 const USERNAME_PATTERN = /^[a-z0-9_.-]{3,50}$/;
 const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 128;
-
-const CURRENCY_OPTIONS = CURRENCIES.map(({ code, name }) => ({
-    value: code,
-    label: `${code} - ${name}`,
-}));
 
 interface SignupModalProps {
     opened: boolean;
